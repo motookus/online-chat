@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>オンラインチャット</title>
+</head>
+<body>
+<h2>オンラインチャット</h2>
+
+<div id="mainUI">
+  <!-- 名前入力 -->
+  <div>
+    名前: <input id="name" type="text" placeholder="名前を入力">
+    <button id="setName">名前を決定</button>
+  </div>
+
+  <!-- 管理者コード入力 -->
+  <div>
+    管理者コード: <input id="adminCode" type="text" placeholder="管理者コード">
+    <button id="adminBtn">管理者になる</button>
+  </div>
+
+  <!-- 管理者用Ban/Unban -->
+  <div id="adminActions" style="display:none; margin-top:10px;">
+    <input id="targetName" type="text" placeholder="名前を入力">
+    <button id="banBtn">Ban</button>
+    <h4>ブラックリスト</h4>
+    <div id="blacklist" style="border:1px solid #ccc; width:300px; height:150px; overflow:auto; padding:5px;"></div>
+  </div>
+
+  <!-- オンラインユーザー表示 -->
+  <h3>オンラインユーザー</h3>
+  <div id="users" style="border:1px solid #ccc; width:400px; height:150px; overflow:auto; padding:5px;"></div>
+
+  <!-- チャット表示 -->
+  <h3>チャット</h3>
+  <div id="chat" style="border:1px solid #ccc; width:600px; height:300px; overflow:auto; padding:5px;"></div>
+
+  <!-- メッセージ送信 -->
+  <input id="msg" type="text" placeholder="メッセージを入力" style="width:400px;">
+  <button id="send">送信</button>
+
+  <!-- 管理者用チャット削除 -->
+  <button id="clear" style="display:none;">チャット削除（管理者用）</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+import { getDatabase, ref, push, remove, onValue, set, onDisconnect, get } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
+
+// ===== Firebase設定 =====
+const firebaseConfig = {
+  apiKey: "AIzaSyAmxNUpdY8aNxjNsn5ncodvEvnIJACLv0A",
+  authDomain: "speak-598d0.firebaseapp.com",
+  databaseURL: "https://speak-598d0-default-rtdb.firebaseio.com",
+  projectId: "speak-598d0",
+  storageBucket: "speak-598d0.firebasestorage.app",
+  messagingSenderId: "440395611113",
+  appId: "1:440395611113:web:a5a9f2c06b3a2d834d2978",
+  measurementId: "G-1F2JBRG8G8"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// ===== DOM =====
+const mainUI = document.getElementById("mainUI");
+const chatDiv = document.getElementById("chat");
+const msgInput = document.getElementById("msg");
+const sendBtn = document.getElementById("send");
+const nameInput = document.getElementById("name");
+const setNameBtn = document.getElementById("setName");
+const adminCodeInput = document.getElementById("adminCode");
+const adminBtn = document.getElementById("adminBtn");
+const clearBtn = document.getElementById("clear");
+const usersDiv = document.getElementById("users");
+const adminActionsDiv = document.getElementById("adminActions");
+const targetNameInput = document.getElementById("targetName");
+const banBtn = document.getElementById("banBtn");
+const blacklistDiv = document.getElementById("blacklist");
+
+// ===== 管理者コード =====
+const ADMIN_CODE = "12480851548902103219856012019984997110646402160464684614897894056406480098774054016199403201689798750131065656";
+
+// ===== ユーザー固有ID =====
+let myId = localStorage.getItem("myId");
+if(!myId){
+    myId = Date.now().toString(36) + "-" + Math.floor(Math.random()*1e6).toString(36);
+    localStorage.setItem("myId", myId);
+}
+
+// ===== 状態 =====
+let baseName = "名無し";
+let myName = baseName + "#" + myId.slice(-4);
+let isAdmin = false;
+let amBanned = false;
+
+// ===== Refs =====
+const presenceRef = ref(db,"presence/"+myId);
+const usersRef = ref(db,"presence");
+const chatRef = ref(db,"chat");
+const bannedRef = id => ref(db,"banned/"+id);
+const adminFlagsRef = ref(db,"adminFlags");
+
+// ===== BANチェック =====
+async function checkBan() {
+  const snap = await get(bannedRef(myId));
+  if(snap.exists()) { amBanned=true; mainUI.innerHTML="<h2>あなたはBANされています</h2>"; return true; }
+  return false;
+}
+checkBan();
+
+// ===== 名前決定 =====
+setNameBtn.onclick = async () => {
+  if(await checkBan()) return;
+  baseName = nameInput.value.trim() || "名無し";
+  myName = baseName + "#" + myId.slice(-4);
+  await set(presenceRef,{name:myName,admin:isAdmin});
+  onDisconnect(presenceRef).remove();
+  alert("あなたの名前は「"+myName+"」です");
+};
+
+// ===== 管理者になる =====
+adminBtn.onclick = async () => {
+  const code = adminCodeInput.value.trim();
+  if(code===ADMIN_CODE){
+    isAdmin=true;
+    await set(ref(db,"adminFlags/"+myId),true);
+    onDisconnect(ref(db,"adminFlags/"+myId)).remove(); 
+    clearBtn.style.display="inline";
+    adminActionsDiv.style.display="block";
+    alert("管理者になりました");
+    loadBlacklist();
+  } else alert("管理者コードが違います");
+  adminCodeInput.value="";
+};
+
+// ===== メッセージ送信 =====
+sendBtn.onclick = async () => {
+  if(amBanned) return;
+  if(!myName){ alert("名前を設定してください"); return; }
+  const text = msgInput.value.trim();
+  if(!text) return;
+  await push(chatRef,{id:myId,name:myName,text: text,ts:Date.now()});
+  msgInput.value="";
+};
+
+// ===== チャット表示（リアルタイム更新） =====
+let adminMap={};
+onValue(adminFlagsRef,snap=>{adminMap=snap.val()||{};});
+onValue(chatRef, snap => {
+  const chat = snap.val() || {};
+  chatDiv.innerHTML = "";
+  for(const key in chat){
+    const data = chat[key];
+    const el = document.createElement("div");
+    el.style.color = adminMap[data.id] ? "red" : "black";
+    const hhmm = new Date(data.ts||Date.now()).toLocaleTimeString();
+    el.textContent = `[${hhmm}] ${data.name}: ${data.text}`;
+    chatDiv.appendChild(el);
+  }
+  chatDiv.scrollTop = chatDiv.scrollHeight;
+});
+
+// ===== オンラインユーザー表示 =====
+onValue(usersRef,snap=>{
+  const users=snap.val()||{};
+  usersDiv.innerHTML="";
+  for(const uid in users){
+    const u=users[uid];
+    const row=document.createElement("div");
+    row.dataset.uid=uid;
+    row.textContent=u.name;
+    usersDiv.appendChild(row);
+  }
+});
+
+// ===== Ban機能 =====
+banBtn.onclick=async()=>{
+  const target=targetNameInput.value.trim();
+  if(!target) return alert("名前を入力してください");
+  const snap=await get(usersRef);
+  const users=snap.val()||{};
+  for(const uid in users){
+    if(users[uid].name===target){
+      await set(bannedRef(uid),{by:myId,ts:Date.now(),name:users[uid].name});
+      await set(ref(db,"presence/"+uid),null);
+      return;
+    }
+  }
+};
+
+// ===== BAN監視 =====
+onValue(bannedRef(myId),snap=>{
+  amBanned=snap.exists();
+  if(amBanned) mainUI.innerHTML="<h2>あなたはBANされています</h2>";
+});
+
+// ===== チャット削除（管理者用・リアルタイム反映） =====
+clearBtn.onclick = async () => {
+  if(!isAdmin) return;
+  if(!confirm("全チャット削除しますか？")) return;
+  await remove(chatRef);
+};
+
+// ===== ブラックリスト表示 =====
+function loadBlacklist(){
+  onValue(ref(db,"banned"),snap=>{
+    const banned=snap.val()||{};
+    blacklistDiv.innerHTML="";
+    if(!isAdmin) return;
+    for(const uid in banned){
+      const row=document.createElement("div");
+      row.textContent=banned[uid].name + " ";
+      const unbanBtn=document.createElement("button");
+      unbanBtn.textContent="解除";
+      unbanBtn.onclick=()=>{ set(bannedRef(uid),null); };
+      row.appendChild(unbanBtn);
+      blacklistDiv.appendChild(row);
+    }
+  });
+}
+
+// ページロード時に管理者フラグがあればブラックリスト表示
+onValue(adminFlagsRef, snap => {
+  const admins = snap.val() || {};
+  if(admins[myId]){
+    isAdmin = true;
+    clearBtn.style.display="inline";
+    adminActionsDiv.style.display="block";
+    loadBlacklist();
+  }
+});
+</script>
+</body>
+</html>
