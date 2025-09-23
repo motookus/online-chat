@@ -142,7 +142,7 @@ sendBtn.onclick = async () => {
   if(!myName){ alert("名前を設定してください"); return; }
   const text = msgInput.value.trim();
   if(!text) return;
-  bgm.play()
+  discord.play()
   await push(chatRef,{id:myId,name:myName,text: text,ts:Date.now()});
   msgInput.value="";
 };
