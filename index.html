@@ -14,6 +14,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
     import { getDatabase, ref, set, push, onValue, remove, get } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-database.js";
 
+const discord = new Audio("notification.mp3");
+    
     // === Firebase設定 ===
     const firebaseConfig = {
       databaseURL: "https://speak-598d0-default-rtdb.firebaseio.com/"
@@ -77,6 +79,7 @@
       const msg = document.getElementById("msgInput").value.trim();
       if (!msg) return;
       const snap = await get(userRef(myId));
+              discord.play()
       const name = snap.val()?.name || "名無し";
       await push(chatRef, { uid: myId, name, text: msg, time: Date.now() });
       document.getElementById("msgInput").value = "";
@@ -176,7 +179,7 @@
         setTimeout(() => remove(kickedUserRef(myId)), 10000);
       }
     });
-
+    
     // === ページ閉じたら退室 ===
     window.addEventListener("beforeunload", () => {
       remove(userRef(myId));
