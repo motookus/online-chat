@@ -48,6 +48,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
 import { getDatabase, ref, push, remove, onValue, set, onDisconnect, get } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
 
+const discord = new Audio("notification.mp3"); // ← ここに音楽ファイルのURL
+  
 // ===== Firebase設定 =====
 const firebaseConfig = {
   apiKey: "AIzaSyAmxNUpdY8aNxjNsn5ncodvEvnIJACLv0A",
@@ -140,6 +142,7 @@ sendBtn.onclick = async () => {
   if(!myName){ alert("名前を設定してください"); return; }
   const text = msgInput.value.trim();
   if(!text) return;
+  bgm.play()
   await push(chatRef,{id:myId,name:myName,text: text,ts:Date.now()});
   msgInput.value="";
 };
