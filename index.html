@@ -179,6 +179,33 @@ const discord = new Audio("notification.mp3");
         setTimeout(() => remove(kickedUserRef(myId)), 10000);
       }
     });
+
+// ブラックリストを監視
+onValue(ref(db, "banned"), snap => {
+  const bannedData = snap.val() || {};
+  const ul = document.getElementById("blacklistDisplay");
+  ul.innerHTML = "";
+
+  // users ノードを取得して UID → 名前マップ作成
+  get(usersRef).then(usersSnap => {
+    const users = usersSnap.val() || {};
+    for (const uid in bannedData) {
+      const name = users[uid]?.name || "名無し";
+      const li = document.createElement("li");
+      li.textContent = name;
+
+      // 管理者なら解除ボタンを追加
+      if (isAdmin) {
+        const btn = document.createElement("button");
+        btn.textContent = "解除";
+        btn.onclick = () => remove(ref(db, "banned/" + uid));
+        li.appendChild(btn);
+      }
+      ul.appendChild(li);
+    }
+  });
+});
+
     
     // === ページ閉じたら退室 ===
     window.addEventListener("beforeunload", () => {
@@ -199,5 +226,9 @@ const discord = new Audio("notification.mp3");
   <button id="banBtn">Ban</button>
   <button id="unbanBtn">Unban</button>
   <button id="kickBtn">Kick</button>
+<div>
+  <h3>ブラックリスト</h3>
+  <ul id="blacklistDisplay"></ul>  <!-- ここを追加 -->
+</div>
 </body>
 </html>
