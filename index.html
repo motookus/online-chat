@@ -40,6 +40,37 @@ const discord = new Audio("notification.mp3");
     const bannedUserRef = uid => ref(db, "banned/" + uid);
     const kickedUserRef = uid => ref(db, "kicked/" + uid);
 
+async function renderBlacklist() {
+  const bannedSnap = await get(ref(db, "banned"));
+  const bannedData = bannedSnap.val() || {};
+  const ul = document.getElementById("blacklistDisplay");
+  ul.innerHTML = "";
+
+  const usersSnap = await get(usersRef);
+  const users = usersSnap.val() || {};
+
+  for (const uid in bannedData) {
+    const name = users[uid]?.name || "名無し";
+    const li = document.createElement("li");
+    li.textContent = name;
+
+    if (isAdmin) {
+      const btn = document.createElement("button");
+      btn.textContent = "解除";
+      btn.onclick = () => remove(ref(db, "banned/" + uid));
+      li.appendChild(btn);
+    }
+    ul.appendChild(li);
+  }
+}
+
+// 初期描画
+renderBlacklist();
+
+// 監視して更新
+onValue(ref(db, "banned"), renderBlacklist);
+
+    
     // === 管理者コード ===
     const ADMIN_CODE = "12480851548902103219856012019984997110646402160464684614897894056406480098774054016199403201689798750131065656";
     let isAdmin = false;
@@ -63,16 +94,25 @@ const discord = new Audio("notification.mp3");
       await set(userRef(myId), { name });
     };
 
-    // === 管理者になる ===
-    document.getElementById("setAdminBtn").onclick = () => {
-      const code = document.getElementById("adminCode").value.trim();
-      if (code === ADMIN_CODE) {
-        isAdmin = true;
-        alert("管理者権限を取得しました");
-      } else {
-        alert("管理者コードが違います");
-      }
-    };
+// 管理者になった時に描画
+document.getElementById("setAdminBtn").onclick = () => {
+  const code = document.getElementById("adminCode").value.trim();
+  if (code === ADMIN_CODE) {
+    isAdmin = true;
+    alert("管理者権限を取得しました");
+    document.getElementById("hideOnlineBtn").style.display = "inline-block";
+    renderBlacklist();
+  } else {
+    alert("管理者コードが違います");
+  }
+};
+
+// リアルタイム更新
+onValue(ref(db, "banned"), () => {
+  if (isAdmin) renderBlacklist();
+});
+
+
 
     // === チャット送信 ===
     document.getElementById("sendBtn").onclick = async () => {
@@ -150,17 +190,26 @@ const discord = new Audio("notification.mp3");
       chatBox.scrollTop = chatBox.scrollHeight;
     });
 
-    // === ユーザー表示 ===
-    onValue(usersRef, snap => {
-      usersBox.innerHTML = "";
-      const users = snap.val() || {};
-      for (const uid in users) {
-        const u = users[uid];
-        const role = (isAdmin && uid === myId) ? "👑" : "👤";
-        const cls = (isAdmin && uid === myId) ? "admin" : "user";
-        usersBox.innerHTML += `<div class="${cls}">${role} ${u.name}</div>`;
-      }
-    });
+let hiddenOnline = false;
+
+document.getElementById("hideOnlineBtn").onclick = () => {
+  hiddenOnline = !hiddenOnline;
+  document.getElementById("hideOnlineBtn").textContent = hiddenOnline ? "オンラインを表示" : "オンラインを隠す";
+
+  // 自分だけ usersBox に表示されないように再描画
+  onValue(usersRef, snap => {
+    usersBox.innerHTML = "";
+    const users = snap.val() || {};
+    for (const uid in users) {
+      if (uid === myId && hiddenOnline) continue; // 自分を非表示
+      const u = users[uid];
+      const role = (isAdmin && uid === myId) ? "👑" : "👤";
+      const cls = (isAdmin && uid === myId) ? "admin" : "user";
+      usersBox.innerHTML += `<div class="${cls}">${role} ${u.name}</div>`;
+    }
+  });
+};
+
 
     // === BAN監視 ===
     onValue(bannedUserRef(myId), snap => {
@@ -230,5 +279,6 @@ onValue(ref(db, "banned"), snap => {
   <h3>ブラックリスト</h3>
   <ul id="blacklistDisplay"></ul>  <!-- ここを追加 -->
 </div>
+  <button id="hideOnlineBtn" style="display:none;">オンラインを隠す</button>
 </body>
 </html>
