@@ -88,7 +88,7 @@ if(!myId){
     localStorage.setItem("myId", myId);
 }
 
-// ===== 状態 =====
+// デフォルト名前を設定
 let baseName = "名無し";
 let myName = baseName + "#" + myId.slice(-4);
 let isAdmin = false;
@@ -107,7 +107,13 @@ async function checkBan() {
   if(snap.exists()) { amBanned=true; mainUI.innerHTML="<h2>あなたはBANされています</h2>"; return true; }
   return false;
 }
-checkBan();
+
+// ===== 最初に presence 登録 =====
+(async ()=>{
+  if(await checkBan()) return;
+  await set(presenceRef,{name:myName,admin:isAdmin});
+  onDisconnect(presenceRef).remove();
+})();
 
 // ===== 名前決定 =====
 setNameBtn.onclick = async () => {
@@ -144,7 +150,7 @@ sendBtn.onclick = async () => {
   msgInput.value="";
 };
 
-// ===== チャット表示（リアルタイム更新） =====
+// ===== チャット表示 =====
 let adminMap={};
 onValue(adminFlagsRef,snap=>{adminMap=snap.val()||{};});
 onValue(chatRef, snap => {
@@ -195,7 +201,7 @@ onValue(bannedRef(myId),snap=>{
   if(amBanned) mainUI.innerHTML="<h2>あなたはBANされています</h2>";
 });
 
-// ===== チャット削除（管理者用・リアルタイム反映） =====
+// ===== チャット削除（管理者用） =====
 clearBtn.onclick = async () => {
   if(!isAdmin) return;
   if(!confirm("全チャット削除しますか？")) return;
@@ -220,7 +226,7 @@ function loadBlacklist(){
   });
 }
 
-// ページロード時に管理者フラグがあればブラックリスト表示
+// ページロード時に管理者フラグチェック
 onValue(adminFlagsRef, snap => {
   const admins = snap.val() || {};
   if(admins[myId]){
